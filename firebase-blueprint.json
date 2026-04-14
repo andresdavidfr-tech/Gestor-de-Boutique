@@ -1,125 +1,95 @@
 {
   "entities": {
-    "Client": {
-      "title": "Client",
-      "description": "A client of the resale business",
+    "client": {
+      "title": "Cliente",
+      "description": "Información de los clientes de la boutique",
       "type": "object",
       "properties": {
-        "name": { "type": "string", "description": "Client's full name" },
-        "email": { "type": "string", "format": "email", "description": "Client's email address" },
-        "phone": { "type": "string", "description": "Client's phone number" },
-        "address": { "type": "string", "description": "Client's physical address" },
-        "photoUrl": { "type": "string", "format": "uri", "description": "URL to the client's photo" },
-        "notes": { "type": "string", "description": "General notes about the client" },
-        "balance": { "type": "number", "description": "Current balance. Positive means client owes money, negative means business owes client." },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+        "name": { "type": "string", "description": "Nombre completo" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "balance": { "type": "number", "description": "Saldo del cliente (positivo = deuda, negativo = crédito)" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["name", "createdAt"]
+      "required": ["name"]
     },
-    "Bag": {
-      "title": "Bag",
-      "description": "A bag in the inventory",
+    "bag": {
+      "title": "Cartera",
+      "description": "Inventario de carteras",
       "type": "object",
       "properties": {
-        "brand": { "type": "string", "description": "Brand of the bag" },
-        "model": { "type": "string", "description": "Model of the bag" },
-        "condition": { "type": "string", "description": "Condition of the bag" },
-        "status": { 
-          "type": "string", 
-          "enum": ["concession", "sold", "returned", "available"],
-          "description": "Current status of the bag"
-        },
-        "ownerId": { "type": "string", "description": "ID of the client who gave the bag in concession" },
-        "buyerId": { "type": "string", "description": "ID of the client who bought the bag" },
-        "price": { "type": "number", "description": "Selling price of the bag" },
-        "commission": { "type": "number", "description": "Commission percentage or amount" },
-        "notes": { "type": "string", "description": "Notes about the bag" },
-        "photos": { 
-          "type": "array",
-          "items": { "type": "string", "format": "uri" },
-          "description": "URLs to photos of the bag"
-        },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+        "brand": { "type": "string" },
+        "model": { "type": "string" },
+        "condition": { "type": "string" },
+        "status": { "type": "string", "enum": ["available", "sold", "concession", "returned"] },
+        "price": { "type": "number" },
+        "ownerId": { "type": "string", "description": "ID del cliente propietario" },
+        "notes": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["brand", "status", "createdAt"]
+      "required": ["brand", "status"]
     },
-    "Transaction": {
-      "title": "Transaction",
-      "description": "A financial transaction with a client",
+    "transaction": {
+      "title": "Transacción",
+      "description": "Movimientos financieros de clientes",
       "type": "object",
       "properties": {
-        "clientId": { "type": "string", "description": "ID of the client" },
-        "type": { 
-          "type": "string", 
-          "enum": ["payment_received", "payment_made", "bag_sold", "bag_concession", "debt_added"],
-          "description": "Type of transaction"
-        },
-        "amount": { "type": "number", "description": "Amount of the transaction" },
-        "date": { "type": "string", "format": "date-time", "description": "Date of the transaction" },
-        "notes": { "type": "string", "description": "Notes about the transaction" },
-        "bagId": { "type": "string", "description": "ID of the bag related to the transaction (optional)" }
+        "clientId": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["payment_received", "payment_made"] },
+        "notes": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" }
       },
-      "required": ["clientId", "type", "amount", "date"]
+      "required": ["clientId", "amount", "type"]
     },
-    "Visit": {
-      "title": "Visit",
-      "description": "A scheduled visit with a client",
+    "visit": {
+      "title": "Visita",
+      "description": "Agenda de visitas a clientes",
       "type": "object",
       "properties": {
-        "clientId": { "type": "string", "description": "ID of the client" },
-        "date": { "type": "string", "format": "date-time", "description": "Date and time of the visit" },
-        "purpose": { "type": "string", "description": "Purpose of the visit" },
-        "status": { 
-          "type": "string", 
-          "enum": ["scheduled", "completed", "cancelled"],
-          "description": "Status of the visit"
-        },
-        "notes": { "type": "string", "description": "Notes about the visit" }
+        "clientId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["scheduled", "completed", "cancelled"] },
+        "purpose": { "type": "string" },
+        "notes": { "type": "string" }
       },
       "required": ["clientId", "date", "status"]
     },
-    "Reminder": {
-      "title": "Reminder",
-      "description": "A reminder for a client notification",
+    "history": {
+      "title": "Historial",
+      "description": "Log de actividades del sistema",
       "type": "object",
       "properties": {
-        "clientId": { "type": "string", "description": "ID of the client" },
-        "title": { "type": "string", "description": "Title of the reminder" },
-        "date": { "type": "string", "format": "date-time", "description": "Date and time of the reminder" },
-        "recurring": { 
-          "type": "string", 
-          "enum": ["none", "daily", "weekly", "monthly"],
-          "description": "Recurrence of the reminder"
-        },
-        "status": { 
-          "type": "string", 
-          "enum": ["pending", "completed"],
-          "description": "Status of the reminder"
-        }
-      },
-      "required": ["clientId", "title", "date", "status"]
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "object" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "user": {
+      "title": "Usuario",
+      "description": "Perfiles de administradores",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "lastActive": { "type": "string", "format": "date-time" },
+        "emailVerified": { "type": "boolean" },
+        "role": { "type": "string", "enum": ["admin", "user"] }
+      }
     }
   },
   "firestore": {
-    "/clients/{clientId}": {
-      "schema": { "$ref": "#/entities/Client" },
-      "description": "Collection of clients"
-    },
-    "/bags/{bagId}": {
-      "schema": { "$ref": "#/entities/Bag" },
-      "description": "Collection of bags"
-    },
-    "/transactions/{transactionId}": {
-      "schema": { "$ref": "#/entities/Transaction" },
-      "description": "Collection of transactions"
-    },
-    "/visits/{visitId}": {
-      "schema": { "$ref": "#/entities/Visit" },
-      "description": "Collection of visits"
-    },
-    "/reminders/{reminderId}": {
-      "schema": { "$ref": "#/entities/Reminder" },
-      "description": "Collection of reminders"
-    }
+    "/clients/{clientId}": { "schema": "client", "description": "Colección de clientes" },
+    "/bags/{bagId}": { "schema": "bag", "description": "Colección de carteras" },
+    "/transactions/{transactionId}": { "schema": "transaction", "description": "Historial de pagos y cobranzas" },
+    "/visits/{visitId}": { "schema": "visit", "description": "Agenda de visitas" },
+    "/history/{historyId}": { "schema": "history", "description": "Log de auditoría" },
+    "/users/{userId}": { "schema": "user", "description": "Perfiles de usuario" }
   }
 }
