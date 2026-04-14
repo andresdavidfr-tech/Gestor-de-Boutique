@@ -24,8 +24,14 @@ export const Login: React.FC = () => {
       await loginWithGoogle();
     } catch (err: any) {
       console.error('Login failed', err);
-      if (err.code === 'auth/network-request-failed') {
-        setError('Error de red: Asegúrate de que el dominio de la aplicación esté autorizado en la consola de Firebase y que no tengas bloqueadores de anuncios activos.');
+      if (err.code === 'auth/unauthorized-domain') {
+        setError('Este dominio no está autorizado en Firebase. Debes agregar tu URL de Vercel o de vista previa en la sección de "Dominios Autorizados" en la consola de Firebase.');
+      } else if (err.code === 'auth/operation-not-allowed') {
+        setError('El inicio de sesión con Google no está habilitado. Actívalo en la consola de Firebase > Authentication > Sign-in method.');
+      } else if (err.code === 'auth/popup-blocked') {
+        setError('El navegador bloqueó la ventana emergente. Por favor, permite las ventanas emergentes para este sitio.');
+      } else if (err.code === 'auth/network-request-failed') {
+        setError('Error de red. Verifica tu conexión o revisa si un bloqueador de anuncios está interfiriendo.');
       } else {
         setError(err.message || 'Error al iniciar sesión. Por favor intenta de nuevo.');
       }
@@ -89,9 +95,21 @@ export const Login: React.FC = () => {
                 className="mb-8 p-4 rounded-none bg-red-50 border border-red-200 flex items-start gap-3"
               >
                 <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
-                <p className="text-sm font-semibold text-red-800 leading-tight">
-                  {error || "Acceso restringido. Solo administradores autorizados pueden ingresar."}
-                </p>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-red-800 leading-tight">
+                    {error || "Acceso restringido. Solo administradores autorizados pueden ingresar."}
+                  </p>
+                  {error && (
+                    <a 
+                      href="https://console.firebase.google.com/project/gen-lang-client-0812924855/authentication/providers" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-xs text-red-600 underline mt-2 inline-block font-bold"
+                    >
+                      Configurar en Consola de Firebase →
+                    </a>
+                  )}
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
