@@ -37,8 +37,15 @@ export const Bags: React.FC = () => {
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
       setFormData(prev => ({ ...prev, photoUrl: url }));
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error uploading photo:", error);
+      let message = "Error al subir la foto.";
+      if (error.code === 'storage/unauthorized') {
+        message = "No tienes permisos para subir archivos. Revisa las reglas de Storage en Firebase.";
+      } else if (error.code === 'storage/canceled') {
+        message = "Carga cancelada.";
+      }
+      alert(message);
     } finally {
       setUploading(false);
     }
