@@ -1,0 +1,222 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: clients
+    // Document ID: auto-generated
+    // Fields:
+    //   - name: string (required)
+    //   - email: string (optional)
+    //   - phone: string (optional)
+    //   - address: string (optional)
+    //   - photoUrl: string (optional)
+    //   - notes: string (optional)
+    //   - balance: number (optional)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: bags
+    // Document ID: auto-generated
+    // Fields:
+    //   - brand: string (required)
+    //   - model: string (optional)
+    //   - condition: string (optional)
+    //   - status: string (required, enum: concession, sold, returned, available)
+    //   - ownerId: string (optional)
+    //   - buyerId: string (optional)
+    //   - price: number (optional)
+    //   - commission: number (optional)
+    //   - notes: string (optional)
+    //   - photos: list of strings (optional)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: transactions
+    // Document ID: auto-generated
+    // Fields:
+    //   - clientId: string (required)
+    //   - type: string (required, enum: payment_received, payment_made, bag_sold, bag_concession, debt_added)
+    //   - amount: number (required)
+    //   - date: timestamp (required)
+    //   - notes: string (optional)
+    //   - bagId: string (optional)
+    //
+    // Collection: visits
+    // Document ID: auto-generated
+    // Fields:
+    //   - clientId: string (required)
+    //   - date: timestamp (required)
+    //   - purpose: string (optional)
+    //   - status: string (required, enum: scheduled, completed, cancelled)
+    //   - notes: string (optional)
+    //
+    // Collection: reminders
+    // Document ID: auto-generated
+    // Fields:
+    //   - clientId: string (required)
+    //   - title: string (required)
+    //   - date: timestamp (required)
+    //   - recurring: string (optional, enum: none, daily, weekly, monthly)
+    //   - status: string (required, enum: pending, completed)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.email == "andresdavidfr@gmail.com" && request.auth.token.email_verified == true;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function isValidStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+        request.resource.data[field].size() >= minLen &&
+        request.resource.data[field].size() <= maxLen;
+    }
+
+    function isValidOptionalString(field, minLen, maxLen) {
+      return !(field in request.resource.data) ||
+             (request.resource.data[field] is string &&
+              request.resource.data[field].size() >= minLen &&
+              request.resource.data[field].size() <= maxLen);
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidOptionalEmail(field) {
+      return !(field in request.resource.data) || isValidEmail(request.resource.data[field]);
+    }
+
+    function isValidOptionalNumber(field) {
+      return !(field in request.resource.data) || request.resource.data[field] is number;
+    }
+
+    function isValidOptionalList(field, maxSize) {
+      return !(field in request.resource.data) || (request.resource.data[field] is list && request.resource.data[field].size() <= maxSize);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidClient() {
+      return hasRequiredFields(['name', 'createdAt']) &&
+             isValidStringLength('name', 1, 100) &&
+             request.resource.data.createdAt is timestamp &&
+             isValidOptionalEmail('email') &&
+             isValidOptionalString('phone', 0, 50) &&
+             isValidOptionalString('address', 0, 500) &&
+             isValidOptionalString('photoUrl', 0, 1000) &&
+             isValidOptionalString('notes', 0, 5000) &&
+             isValidOptionalNumber('balance');
+    }
+
+    function isValidBag() {
+      return hasRequiredFields(['brand', 'status', 'createdAt']) &&
+             isValidStringLength('brand', 1, 100) &&
+             request.resource.data.status in ['concession', 'sold', 'returned', 'available'] &&
+             request.resource.data.createdAt is timestamp &&
+             isValidOptionalString('model', 0, 100) &&
+             isValidOptionalString('condition', 0, 100) &&
+             isValidOptionalString('ownerId', 0, 100) &&
+             isValidOptionalString('buyerId', 0, 100) &&
+             isValidOptionalNumber('price') &&
+             isValidOptionalNumber('commission') &&
+             isValidOptionalString('notes', 0, 5000) &&
+             isValidOptionalList('photos', 20);
+    }
+
+    function isValidTransaction() {
+      return hasRequiredFields(['clientId', 'type', 'amount', 'date']) &&
+             request.resource.data.clientId is string &&
+             request.resource.data.type in ['payment_received', 'payment_made', 'bag_sold', 'bag_concession', 'debt_added'] &&
+             request.resource.data.amount is number &&
+             request.resource.data.date is timestamp &&
+             isValidOptionalString('notes', 0, 5000) &&
+             isValidOptionalString('bagId', 0, 100);
+    }
+
+    function isValidVisit() {
+      return hasRequiredFields(['clientId', 'date', 'status']) &&
+             request.resource.data.clientId is string &&
+             request.resource.data.date is timestamp &&
+             request.resource.data.status in ['scheduled', 'completed', 'cancelled'] &&
+             isValidOptionalString('purpose', 0, 500) &&
+             isValidOptionalString('notes', 0, 5000);
+    }
+
+    function isValidReminder() {
+      return hasRequiredFields(['clientId', 'title', 'date', 'status']) &&
+             request.resource.data.clientId is string &&
+             isValidStringLength('title', 1, 200) &&
+             request.resource.data.date is timestamp &&
+             request.resource.data.status in ['pending', 'completed'] &&
+             (!( 'recurring' in request.resource.data ) || request.resource.data.recurring in ['none', 'daily', 'weekly', 'monthly']);
+    }
+
+    function isValidUser() {
+      return isValidOptionalString('email', 0, 200) &&
+             isValidOptionalString('displayName', 0, 200) &&
+             isValidOptionalString('photoURL', 0, 1000) &&
+             (!( 'lastActive' in request.resource.data ) || request.resource.data.lastActive is timestamp) &&
+             (!( 'emailVerified' in request.resource.data ) || request.resource.data.emailVerified is bool) &&
+             isValidOptionalString('lastPath', 0, 500);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      allow create, update: if isAuthenticated() && request.auth.uid == userId && isValidUser();
+    }
+
+    match /clients/{clientId} {
+      // Allow unauthenticated CREATE so clients can fill out their own data via public link
+      // But they cannot read, update or delete.
+      allow create: if isValidClient();
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /bags/{bagId} {
+      allow read, delete: if isAdmin();
+      allow create, update: if isAdmin() && isValidBag();
+    }
+
+    match /transactions/{transactionId} {
+      allow read, delete: if isAdmin();
+      allow create, update: if isAdmin() && isValidTransaction();
+    }
+
+    match /visits/{visitId} {
+      allow read, delete: if isAdmin();
+      allow create, update: if isAdmin() && isValidVisit();
+    }
+
+    match /reminders/{reminderId} {
+      allow read, delete: if isAdmin();
+      allow create, update: if isAdmin() && isValidReminder();
+    }
+
+    match /history/{historyId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+    }
+  }
+}

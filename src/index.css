@@ -1,0 +1,46 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Cinzel:wght@400;700;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Montserrat", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Cinzel", serif;
+  
+  --color-brand-50: #fdfbf7;
+  --color-brand-100: #f7f0e1;
+  --color-brand-200: #e9d7b0;
+  --color-brand-300: #d4b47a;
+  --color-brand-400: #c19b58;
+  --color-brand-500: #b08d57; /* Luxury Gold */
+  --color-brand-600: #8e6d3e;
+  --color-brand-700: #6d522e;
+  --color-brand-800: #4d3a21;
+  --color-brand-900: #2d2213;
+  --color-brand-950: #1a140b;
+}
+
+@layer base {
+  body {
+    @apply bg-[#FAF9F6] text-[#1A140B] font-sans;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-widest uppercase;
+  }
+}
+
+.glass-card {
+  @apply bg-white/90 backdrop-blur-sm border border-brand-100 shadow-sm rounded-none;
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center px-8 py-3 rounded-none bg-brand-950 text-brand-200 font-display text-xs tracking-[0.2em] uppercase shadow-lg hover:bg-brand-900 transition-all active:scale-95 disabled:opacity-50;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center px-8 py-3 rounded-none bg-transparent border border-brand-300 text-brand-800 font-display text-xs tracking-[0.2em] uppercase hover:bg-brand-50 transition-all active:scale-95 disabled:opacity-50;
+}
+
+.input-field {
+  @apply block w-full bg-white border border-brand-100 rounded-none px-4 py-3 text-sm focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-all outline-none placeholder-brand-200;
+}
+
