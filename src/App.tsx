@@ -80,7 +80,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
           </div>
           <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 w-48 text-center">
             <p className="text-brand-400 font-display font-bold text-[10px] tracking-[0.3em] uppercase animate-pulse">
-              Vintage LVSM...
+              LVSM...
             </p>
           </div>
         </div>

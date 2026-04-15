@@ -65,7 +65,7 @@ export const PublicClientForm: React.FC = () => {
           </motion.div>
           <h2 className="text-4xl font-display font-black text-brand-950 mb-4 tracking-tighter">¡Todo Listo!</h2>
           <p className="text-brand-600 font-medium leading-relaxed text-sm">
-            Tus datos han sido registrados con éxito en Vintage LVSM. Nos pondremos en contacto contigo pronto.
+            Tus datos han sido registrados con éxito en LVSM. Nos pondremos en contacto contigo pronto.
           </p>
         </motion.div>
       </div>
@@ -89,7 +89,7 @@ export const PublicClientForm: React.FC = () => {
           <div className="inline-flex bg-brand-950 p-4 rounded-none shadow-xl border border-brand-800 mb-6">
             <ShoppingBag className="h-10 w-10 text-brand-200" strokeWidth={1} />
           </div>
-          <h2 className="text-4xl font-display font-black text-brand-950 tracking-tighter">Vintage LVSM</h2>
+          <h2 className="text-4xl font-display font-black text-brand-950 tracking-tighter">LVSM</h2>
           <p className="text-xs text-brand-500 font-bold uppercase tracking-[0.3em] mt-3">Registro de Cliente</p>
         </div>
 
@@ -175,7 +175,7 @@ export const PublicClientForm: React.FC = () => {
         </div>
         
         <p className="mt-10 text-center text-[10px] font-bold text-brand-400 uppercase tracking-[0.3em]">
-          Vintage LVSM &copy; {new Date().getFullYear()}
+          LVSM &copy; {new Date().getFullYear()}
         </p>
       </motion.div>
     </div>

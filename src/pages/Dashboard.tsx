@@ -55,7 +55,7 @@ export const Dashboard: React.FC = () => {
       <div className="flex flex-col lg:flex-row lg:justify-between lg:items-end gap-6">
         <div>
           <p className="text-brand-500 font-bold uppercase tracking-[0.3em] text-xs mb-2">Bienvenida, Florencia</p>
-          <h1 className="text-4xl sm:text-5xl font-display font-black text-brand-950 tracking-tighter">Vintage LVSM</h1>
+          <h1 className="text-4xl sm:text-5xl font-display font-black text-brand-950 tracking-tighter">LVSM</h1>
         </div>
         <div className="flex flex-col sm:flex-row gap-3">
           <a 
@@ -67,14 +67,15 @@ export const Dashboard: React.FC = () => {
             <Share2 className="h-4 w-4 mr-2" />
             Compartir Link
           </a>
-          <Link 
-            to="/public/client-form" 
+          <a 
+            href={shareUrl}
             target="_blank"
+            rel="noopener noreferrer"
             className="btn-secondary"
           >
             <ExternalLink className="h-4 w-4 mr-2" />
             Ver Formulario
-          </Link>
+          </a>
         </div>
       </div>
 
@@ -110,7 +111,7 @@ export const Dashboard: React.FC = () => {
         <div className="max-w-2xl">
           <h2 className="text-3xl font-display font-bold text-brand-950 mb-4">Excelencia en el mercado de lujo</h2>
           <p className="text-brand-800 leading-relaxed mb-8 font-medium">
-            Gestiona tu inventario de piezas exclusivas y mantén el estándar de calidad que define a Vintage LVSM. 
+            Gestiona tu inventario de piezas exclusivas y mantén el estándar de calidad que define a LVSM. 
             Cada detalle cuenta en la experiencia de tus clientes.
           </p>
           <div className="flex flex-wrap gap-4">

@@ -60,7 +60,7 @@ export const Layout: React.FC = () => {
     <div className="min-h-screen bg-[#FAF9F6] flex flex-col md:flex-row">
       {/* Mobile header */}
       <div className="md:hidden bg-white/90 backdrop-blur-md border-b border-brand-100 px-4 py-3 flex justify-between items-center sticky top-0 z-30">
-        <h1 className="text-xl font-display font-bold text-brand-950 tracking-tighter">Vintage LVSM</h1>
+        <h1 className="text-xl font-display font-bold text-brand-950 tracking-tighter">LVSM</h1>
         <div className="flex items-center gap-2">
           <button onClick={handleLogout} className="text-brand-400 hover:text-brand-600 p-2" title="Cerrar Sesión">
             <LogOut className="h-5 w-5" />
@@ -85,7 +85,7 @@ export const Layout: React.FC = () => {
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="h-24 flex items-center justify-between px-6 border-b border-brand-50 bg-brand-950">
-          <h1 className="text-2xl font-display font-black text-brand-200 tracking-tighter">Vintage LVSM</h1>
+          <h1 className="text-2xl font-display font-black text-brand-200 tracking-tighter">LVSM</h1>
           <button onClick={() => setSidebarOpen(false)} className="md:hidden text-brand-200 hover:text-white focus:outline-none">
             <X className="h-6 w-6" />
           </button>
