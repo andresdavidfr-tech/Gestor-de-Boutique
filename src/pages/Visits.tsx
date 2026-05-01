@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { collection, query, onSnapshot, orderBy, addDoc, updateDoc, doc, Timestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, logActivity } from '../firebase';
-import { Plus, Calendar as CalendarIcon, Clock, MapPin, Edit2, X, Tag } from 'lucide-react';
-import { format } from 'date-fns';
+import { Plus, Calendar as CalendarIcon, Clock, MapPin, Edit2, X, Tag, CalendarPlus } from 'lucide-react';
+import { format, addHours } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 import { motion, AnimatePresence } from 'motion/react';
@@ -128,6 +128,26 @@ export const Visits: React.FC = () => {
     }
   };
 
+  const getGoogleCalendarUrl = (visit: any, client: any, visitDate: Date) => {
+    const title = encodeURIComponent(`Visita LVSM: ${client?.name || 'Cliente'}`);
+    const endDate = addHours(visitDate, 1);
+    
+    // Format dates to YYYYMMDDTHHmmssZ (UTC)
+    const formatGoogleDate = (date: Date) => {
+      return date.toISOString().replace(/-|:|\.\d\d\d/g, '');
+    };
+    
+    const dates = `${formatGoogleDate(visitDate)}/${formatGoogleDate(endDate)}`;
+    
+    let details = '';
+    if (visit.purpose) details += `Motivo: ${visit.purpose}\n`;
+    if (visit.notes) details += `Notas: ${visit.notes}\n`;
+    
+    const location = client?.address ? encodeURIComponent(client.address) : '';
+    
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${encodeURIComponent(details)}&location=${location}`;
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
@@ -206,7 +226,16 @@ export const Visits: React.FC = () => {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 sm:gap-4">
+                    <a 
+                      href={getGoogleCalendarUrl(visit, client, visitDate)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-3 text-brand-500 hover:text-brand-700 hover:bg-brand-100 rounded-2xl transition-all"
+                      title="Agregar a Google Calendar"
+                    >
+                      <CalendarPlus className="h-5 w-5" />
+                    </a>
                     {client?.address && (
                       <a 
                         href={`https://waze.com/ul?q=${encodeURIComponent(client.address)}`}
