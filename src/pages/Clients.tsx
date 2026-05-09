@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, orderBy, addDoc, updateDoc, doc, serverTimestamp, where, limit, increment, getDocs } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, addDoc, updateDoc, doc, serverTimestamp, where, limit, increment, getDocs, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, logActivity } from '../firebase';
-import { Plus, Search, MapPin, Edit2, X, Users, DollarSign, History as HistoryIcon, Download } from 'lucide-react';
+import { Plus, Search, MapPin, Edit2, X, Users, DollarSign, History as HistoryIcon, Download, ShoppingBag, Trash2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 import { motion, AnimatePresence } from 'motion/react';
@@ -15,8 +15,9 @@ export const Clients: React.FC = () => {
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
   const [selectedClientForTransaction, setSelectedClientForTransaction] = useState<any>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [editingTransaction, setEditingTransaction] = useState<any>(null);
   const [transactionFormData, setTransactionFormData] = useState({
-    type: 'payment_received',
+    type: 'sold',
     amount: 0,
     notes: ''
   });
@@ -27,8 +28,25 @@ export const Clients: React.FC = () => {
     phone: '',
     address: '',
     balance: 0,
-    notes: ''
+    notes: '',
+    categories: [] as string[],
+    brands: [] as string[],
+    personalStyle: '',
+    wishlist: '',
+    birthday: '',
+    contactPreference: 'whatsapp'
   });
+
+  const categoryOptions = ['Carteras y Bolsos', 'Billeteras y Marroquinería', 'Accesorios', 'Calzado'];
+  const brandOptions = ['Louis Vuitton', 'Chanel', 'Gucci', 'Prada', 'Yves Saint Laurent', 'Hermès', 'Dior', 'Fendi'];
+  const styleOptions = ['Clásico / Atemporal', 'Tendencias / Moderno', 'Vintage / Ediciones Limitadas'];
+
+  const toggleListItem = (list: string[], item: string, field: string) => {
+    const newList = list.includes(item) 
+      ? list.filter(i => i !== item) 
+      : [...list, item];
+    setFormData({ ...formData, [field]: newList });
+  };
   const [loading, setLoading] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
 
@@ -90,11 +108,30 @@ export const Clients: React.FC = () => {
         phone: client.phone || '',
         address: client.address || '',
         balance: client.balance || 0,
-        notes: client.notes || ''
+        notes: client.notes || '',
+        categories: client.categories || [],
+        brands: client.brands || [],
+        personalStyle: client.personalStyle || '',
+        wishlist: client.wishlist || '',
+        birthday: client.birthday || '',
+        contactPreference: client.contactPreference || 'whatsapp'
       });
     } else {
       setEditingClient(null);
-      setFormData({ name: '', email: '', phone: '', address: '', balance: 0, notes: '' });
+      setFormData({ 
+        name: '', 
+        email: '', 
+        phone: '', 
+        address: '', 
+        balance: 0, 
+        notes: '',
+        categories: [],
+        brands: [],
+        personalStyle: '',
+        wishlist: '',
+        birthday: '',
+        contactPreference: 'whatsapp'
+      });
     }
     setIsModalOpen(true);
   };
@@ -107,38 +144,105 @@ export const Clients: React.FC = () => {
       const amount = Number(transactionFormData.amount);
       const type = transactionFormData.type;
       
-      // Calculate balance change
-      // payment_received (cobranza): reduces debt (if balance is positive debt) or increases credit
-      // payment_made (pago a cliente): increases debt or reduces credit
-      // For this boutique, let's assume balance > 0 means client owes money (debt)
-      // and balance < 0 means client has credit.
-      // So payment_received reduces balance.
-      const balanceChange = type === 'payment_received' ? -amount : amount;
+      const balanceChange = type === 'paid' ? -amount : amount;
+      const actionLabel = 
+        type === 'sold' ? 'Venta' : 
+        type === 'paid' ? 'Cobro' : 'Adeudo';
 
-      await addDoc(collection(db, 'transactions'), {
-        clientId: selectedClientForTransaction.id,
-        amount,
-        type,
-        notes: transactionFormData.notes,
-        date: serverTimestamp()
-      });
+      if (editingTransaction) {
+        // Reverse old balance change
+        const oldAmount = Number(editingTransaction.amount);
+        const oldType = editingTransaction.type;
+        const oldBalanceChange = oldType === 'paid' ? -oldAmount : oldAmount;
 
-      await updateDoc(doc(db, 'clients', selectedClientForTransaction.id), {
-        balance: increment(balanceChange)
-      });
+        await updateDoc(doc(db, 'transactions', editingTransaction.id), {
+          amount,
+          type,
+          notes: transactionFormData.notes,
+          updatedAt: serverTimestamp()
+        });
 
-      await logActivity('Nueva Transacción', { 
-        clientName: selectedClientForTransaction.name, 
-        type, 
-        amount 
-      });
+        await updateDoc(doc(db, 'clients', selectedClientForTransaction.id), {
+          balance: increment(-oldBalanceChange + balanceChange)
+        });
 
-      setTransactionFormData({ type: 'payment_received', amount: 0, notes: '' });
+        await logActivity('Transacción Editada', { 
+          clientName: selectedClientForTransaction.name, 
+          type: actionLabel, 
+          amount 
+        });
+      } else {
+        await addDoc(collection(db, 'transactions'), {
+          clientId: selectedClientForTransaction.id,
+          amount,
+          type,
+          notes: transactionFormData.notes,
+          date: serverTimestamp()
+        });
+
+        await updateDoc(doc(db, 'clients', selectedClientForTransaction.id), {
+          balance: increment(balanceChange)
+        });
+
+        await logActivity('Nueva Transacción', { 
+          clientName: selectedClientForTransaction.name, 
+          type: actionLabel, 
+          amount 
+        });
+      }
+
+      setTransactionFormData({ type: 'sold', amount: 0, notes: '' });
+      setEditingTransaction(null);
       setIsTransactionModalOpen(false);
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'transactions');
+      handleFirestoreError(err, editingTransaction ? OperationType.UPDATE : OperationType.CREATE, 'transactions');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleEditTransaction = (tx: any) => {
+    setEditingTransaction(tx);
+    setTransactionFormData({
+      type: tx.type || 'sold',
+      amount: tx.amount || 0,
+      notes: tx.notes || ''
+    });
+  };
+
+  const handleDeleteTransaction = async (tx: any) => {
+    if (!selectedClientForTransaction) return;
+    
+    const confirmDelete = window.confirm(`¿Estás seguro que deseas eliminar este movimiento de $${tx.amount}? El balance del cliente se ajustará automáticamente.`);
+    
+    if (confirmDelete) {
+      setLoading(true);
+      try {
+        // Reverse balance change
+        const amount = Number(tx.amount);
+        const type = tx.type;
+        const balanceChange = type === 'paid' ? -amount : amount;
+
+        await deleteDoc(doc(db, 'transactions', tx.id));
+        
+        await updateDoc(doc(db, 'clients', selectedClientForTransaction.id), {
+          balance: increment(-balanceChange)
+        });
+
+        await logActivity('Movimiento Eliminado', { 
+          clientName: selectedClientForTransaction.name, 
+          amount: tx.amount 
+        });
+
+        if (editingTransaction?.id === tx.id) {
+          setEditingTransaction(null);
+          setTransactionFormData({ type: 'sold', amount: 0, notes: '' });
+        }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, 'transactions');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -172,7 +276,13 @@ export const Clients: React.FC = () => {
           'Fecha Registro': client.createdAt?.toDate ? client.createdAt.toDate().toLocaleDateString() : '',
           'Total Transacciones': clientTx.length,
           'Carteras Vinculadas': clientBags.length,
-          'Nombres de Carteras': clientBags.map((b: any) => `${b.brand} ${b.model}`).join(', ')
+          'Nombres de Carteras': clientBags.map((b: any) => `${b.brand} ${b.model}`).join(', '),
+          Categorías: (client.categories || []).join(', '),
+          Marcas: (client.brands || []).join(', '),
+          Estilo: client.personalStyle,
+          Wishlist: client.wishlist,
+          Cumpleaños: client.birthday,
+          'Canal Preferido': client.contactPreference
         };
       });
 
@@ -251,6 +361,25 @@ export const Clients: React.FC = () => {
     }
   };
 
+  const handleDeleteClient = async () => {
+    if (!editingClient) return;
+    
+    const confirmDelete = window.confirm(`¿Estás seguro que deseas eliminar al cliente "${editingClient.name}"? Esta acción no se puede deshacer y los registros asociados podrían quedar huérfanos.`);
+    
+    if (confirmDelete) {
+      setLoading(true);
+      try {
+        await deleteDoc(doc(db, 'clients', editingClient.id));
+        await logActivity('Eliminación de Cliente', { name: editingClient.name, id: editingClient.id });
+        setIsModalOpen(false);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, 'clients');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
@@ -322,13 +451,15 @@ export const Clients: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start space-x-4 sm:space-x-0 sm:space-y-3 pl-20 sm:pl-0">
-                    <span className={`inline-flex items-center px-4 py-1.5 rounded-full text-sm font-black uppercase tracking-widest ${
-                      Number(client.balance || 0) > 0 ? 'bg-rose-100 text-rose-700' : 
-                      Number(client.balance || 0) < 0 ? 'bg-emerald-100 text-emerald-700' : 
-                      'bg-brand-50 text-brand-400'
-                    }`}>
-                      Balance: ${Number(client.balance || 0).toFixed(2)}
-                    </span>
+                    <div className="text-right">
+                      <span className={`inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                        Number(client.balance || 0) > 0 ? 'bg-rose-100 text-rose-700' : 
+                        Number(client.balance || 0) < 0 ? 'bg-emerald-100 text-emerald-700' : 
+                        'bg-brand-50 text-brand-400'
+                      }`}>
+                        Balance: {Number(client.balance || 0) > 0 ? '+' : ''}{Number(client.balance || 0).toFixed(2)}
+                      </span>
+                    </div>
                     <div className="flex items-center space-x-4">
                       {client.address && (
                         <a 
@@ -405,45 +536,57 @@ export const Clients: React.FC = () => {
                     </button>
                   </div>
 
-                  <div className="mb-8 p-6 bg-brand-50 rounded-2xl flex items-center justify-between">
-                    <span className="text-xs font-black text-brand-500 uppercase tracking-widest">Balance Actual</span>
-                    <span className={`text-2xl font-display font-black ${
-                      Number(selectedClientForTransaction.balance || 0) > 0 ? 'text-rose-600' : 
-                      Number(selectedClientForTransaction.balance || 0) < 0 ? 'text-emerald-600' : 
-                      'text-brand-400'
-                    }`}>
-                      ${Math.abs(Number(selectedClientForTransaction.balance || 0)).toFixed(2)}
-                      <span className="text-xs ml-1 font-bold uppercase tracking-tighter">
-                        {Number(selectedClientForTransaction.balance || 0) > 0 ? 'Deuda' : 'Crédito'}
+                    <div className="mb-8 p-6 bg-brand-50 rounded-2xl flex items-center justify-between">
+                      <span className="text-xs font-black text-brand-500 uppercase tracking-widest">Balance Actual</span>
+                      <span className={`text-2xl font-display font-black ${
+                        Number(selectedClientForTransaction.balance || 0) > 0 ? 'text-rose-600' : 
+                        Number(selectedClientForTransaction.balance || 0) < 0 ? 'text-emerald-600' : 
+                        'text-brand-400'
+                      }`}>
+                        {Number(selectedClientForTransaction.balance || 0) > 0 ? '+' : ''}{Number(selectedClientForTransaction.balance || 0).toFixed(2)}
+                        <span className="text-[10px] ml-2 font-black uppercase tracking-widest opacity-70">
+                          {Number(selectedClientForTransaction.balance || 0) > 0 ? 'Deuda' : Number(selectedClientForTransaction.balance || 0) < 0 ? 'Crédito' : 'SIN SALDO'}
+                        </span>
                       </span>
-                    </span>
-                  </div>
+                    </div>
 
                   <form onSubmit={handleSubmitTransaction} className="space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-3 gap-3">
                       <button
                         type="button"
-                        onClick={() => setTransactionFormData({...transactionFormData, type: 'payment_received'})}
+                        onClick={() => setTransactionFormData({...transactionFormData, type: 'sold'})}
                         className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${
-                          transactionFormData.type === 'payment_received' 
-                            ? 'border-rose-500 bg-rose-50 text-rose-700' 
+                          transactionFormData.type === 'sold' 
+                            ? 'border-blue-500 bg-blue-50 text-blue-700' 
                             : 'border-brand-100 text-brand-400 hover:border-brand-200'
                         }`}
                       >
-                        <DollarSign className="h-6 w-6" />
-                        <span className="text-[10px] font-black uppercase tracking-widest">Cobranza</span>
+                        <ShoppingBag className="h-6 w-6" />
+                        <span className="text-[10px] font-black uppercase tracking-widest">Vendido por</span>
                       </button>
                       <button
                         type="button"
-                        onClick={() => setTransactionFormData({...transactionFormData, type: 'payment_made'})}
+                        onClick={() => setTransactionFormData({...transactionFormData, type: 'paid'})}
                         className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${
-                          transactionFormData.type === 'payment_made' 
+                          transactionFormData.type === 'paid' 
                             ? 'border-emerald-500 bg-emerald-50 text-emerald-700' 
                             : 'border-brand-100 text-brand-400 hover:border-brand-200'
                         }`}
                       >
                         <DollarSign className="h-6 w-6" />
-                        <span className="text-[10px] font-black uppercase tracking-widest">Pago</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest">Pagado</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTransactionFormData({...transactionFormData, type: 'debt'})}
+                        className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${
+                          transactionFormData.type === 'debt' 
+                            ? 'border-rose-500 bg-rose-100 text-rose-700' 
+                            : 'border-brand-100 text-brand-400 hover:border-brand-200'
+                        }`}
+                      >
+                        <DollarSign className="h-6 w-6" />
+                        <span className="text-[10px] font-black uppercase tracking-widest">Adeudado</span>
                       </button>
                     </div>
 
@@ -471,8 +614,20 @@ export const Clients: React.FC = () => {
                     </div>
 
                     <button type="submit" disabled={loading} className="btn-primary w-full py-4">
-                      {loading ? 'Procesando...' : 'Registrar Movimiento'}
+                      {loading ? 'Procesando...' : editingTransaction ? 'Actualizar Movimiento' : 'Registrar Movimiento'}
                     </button>
+                    {editingTransaction && (
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          setEditingTransaction(null);
+                          setTransactionFormData({ type: 'sold', amount: 0, notes: '' });
+                        }}
+                        className="w-full text-xs font-black text-brand-400 uppercase tracking-widest hover:text-brand-600 transition-all border-none bg-transparent"
+                      >
+                        Cancelar Edición
+                      </button>
+                    )}
                   </form>
 
                   <div className="mt-10">
@@ -481,19 +636,41 @@ export const Clients: React.FC = () => {
                     </h4>
                     <div className="space-y-3 max-h-48 overflow-y-auto pr-2">
                       {transactions.map((t) => (
-                        <div key={t.id} className="flex items-center justify-between p-3 bg-brand-50/50 rounded-xl border border-brand-50">
-                          <div>
-                            <p className="text-xs font-bold text-brand-900">
-                              {t.type === 'payment_received' ? 'Cobranza' : 'Pago'}
-                            </p>
-                            <p className="text-[10px] text-brand-400 font-medium">
-                              {t.date?.toDate ? t.date.toDate().toLocaleDateString() : 'Reciente'}
-                            </p>
+                        <div key={t.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                          editingTransaction?.id === t.id ? 'bg-brand-100 border-brand-200' : 'bg-brand-50/50 border-brand-50'
+                        }`}>
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-1">
+                              <button 
+                                type="button"
+                                onClick={() => handleEditTransaction(t)}
+                                className="p-1.5 text-brand-400 hover:text-brand-600 hover:bg-white rounded-lg transition-all"
+                                title="Editar"
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </button>
+                              <button 
+                                type="button"
+                                onClick={() => handleDeleteTransaction(t)}
+                                className="p-1.5 text-rose-400 hover:text-rose-600 hover:bg-white rounded-lg transition-all"
+                                title="Eliminar"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-brand-900">
+                                {t.type === 'sold' ? 'Venta' : t.type === 'paid' ? 'Cobro' : 'Adeudo'}
+                              </p>
+                              <p className="text-[10px] text-brand-400 font-medium">
+                                {t.date?.toDate ? t.date.toDate().toLocaleDateString() : 'Reciente'}
+                              </p>
+                            </div>
                           </div>
                           <span className={`text-sm font-black ${
-                            t.type === 'payment_received' ? 'text-rose-600' : 'text-emerald-600'
+                            t.type === 'sold' ? 'text-blue-600' : t.type === 'paid' ? 'text-emerald-600' : 'text-rose-600'
                           }`}>
-                            {t.type === 'payment_received' ? '-' : '+'}${t.amount.toFixed(2)}
+                            {t.type === 'paid' ? '-' : '+'}${t.amount.toFixed(2)}
                           </span>
                         </div>
                       ))}
@@ -531,14 +708,27 @@ export const Clients: React.FC = () => {
                 className="relative z-10 inline-block align-bottom bg-white rounded-3xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full"
               >
                 <div className="bg-white px-8 pt-8 pb-8">
-                  <div className="flex justify-between items-center mb-8">
-                    <h3 className="text-2xl font-display font-bold text-brand-950" id="modal-title">
-                      {editingClient ? 'Editar Cliente' : 'Nuevo Cliente'}
-                    </h3>
-                    <button onClick={() => setIsModalOpen(false)} className="text-brand-300 hover:text-brand-500 p-2 rounded-full hover:bg-brand-50 transition-all">
-                      <X className="h-6 w-6" />
-                    </button>
-                  </div>
+                    <div className="flex justify-between items-center mb-8">
+                      <h3 className="text-2xl font-display font-bold text-brand-950" id="modal-title">
+                        {editingClient ? 'Editar Cliente' : 'Nuevo Cliente'}
+                      </h3>
+                      <div className="flex items-center gap-2">
+                        {editingClient && (
+                          <button 
+                            type="button"
+                            onClick={handleDeleteClient}
+                            disabled={loading}
+                            className="text-rose-400 hover:text-rose-600 p-2 rounded-full hover:bg-rose-50 transition-all"
+                            title="Eliminar Cliente"
+                          >
+                            <Trash2 className="h-5 w-5" />
+                          </button>
+                        )}
+                        <button onClick={() => setIsModalOpen(false)} className="text-brand-300 hover:text-brand-500 p-2 rounded-full hover:bg-brand-50 transition-all">
+                          <X className="h-6 w-6" />
+                        </button>
+                      </div>
+                    </div>
                   <form onSubmit={handleSubmit} className="space-y-6">
                     <div>
                       <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2">Nombre Completo *</label>
@@ -572,9 +762,75 @@ export const Clients: React.FC = () => {
                       <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2">Balance Inicial ($)</label>
                       <input type="number" step="0.01" value={formData.balance} onChange={e => setFormData({...formData, balance: parseFloat(e.target.value) || 0})} className="input-field" />
                     </div>
+
+                    <div className="pt-6 border-t border-brand-50">
+                      <h4 className="text-xs font-black text-brand-400 uppercase tracking-widest mb-6">Perfil de Preferencias</h4>
+                      
+                      <div className="space-y-6">
+                        <div>
+                          <label className="block text-[10px] font-black text-brand-500 uppercase tracking-widest mb-3">Categorías de Interés</label>
+                          <div className="flex flex-wrap gap-2">
+                            {categoryOptions.map(cat => (
+                              <button
+                                key={cat}
+                                type="button"
+                                onClick={() => toggleListItem(formData.categories, cat, 'categories')}
+                                className={`px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest border transition-all ${
+                                  formData.categories.includes(cat) 
+                                    ? 'bg-brand-950 text-brand-200 border-brand-950' 
+                                    : 'bg-white text-brand-400 border-brand-100'
+                                }`}
+                              >
+                                {cat}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-black text-brand-500 uppercase tracking-widest mb-3">Marcas</label>
+                          <div className="flex flex-wrap gap-2">
+                            {brandOptions.map(brand => (
+                              <button
+                                key={brand}
+                                type="button"
+                                onClick={() => toggleListItem(formData.brands, brand, 'brands')}
+                                className={`px-2 py-1 text-[9px] font-bold uppercase tracking-widest border transition-all ${
+                                  formData.brands.includes(brand) 
+                                    ? 'bg-brand-950 text-brand-200 border-brand-950' 
+                                    : 'bg-white text-brand-400 border-brand-100'
+                                }`}
+                              >
+                                {brand}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[10px] font-black text-brand-500 uppercase tracking-widest mb-2">Cumpleaños</label>
+                            <input type="text" value={formData.birthday} onChange={e => setFormData({...formData, birthday: e.target.value})} className="input-field py-2" placeholder="DD/MM" />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-black text-brand-500 uppercase tracking-widest mb-2">Canal VIP</label>
+                            <select value={formData.contactPreference} onChange={e => setFormData({...formData, contactPreference: e.target.value})} className="input-field py-2">
+                              <option value="whatsapp">WhatsApp</option>
+                              <option value="email">Email</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-black text-brand-500 uppercase tracking-widest mb-2">Wishlist / Holy Grail</label>
+                          <textarea value={formData.wishlist} onChange={e => setFormData({...formData, wishlist: e.target.value})} rows={2} className="input-field" placeholder="Artículos soñados..." />
+                        </div>
+                      </div>
+                    </div>
+
                     <div>
                       <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2">Notas Privadas</label>
-                      <textarea value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} rows={2} className="input-field" placeholder="Preferencias, talles, etc..." />
+                      <textarea value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} rows={2} className="input-field" placeholder="Detalles de interés, talles, etc..." />
                     </div>
                     <div className="pt-4 flex flex-col sm:flex-row-reverse gap-3">
                       <button type="submit" disabled={loading} className="btn-primary flex-1">

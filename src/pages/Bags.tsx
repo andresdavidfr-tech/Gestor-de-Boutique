@@ -1,10 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, orderBy, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, addDoc, updateDoc, doc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, logActivity, storage } from '../firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Plus, Search, Tag, Edit2, X, ShoppingBag, Camera, Loader2 } from 'lucide-react';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { Plus, Search, Tag, Edit2, X, ShoppingBag, Camera, Loader2, ShieldCheck, Hash, Clock, Trash2 } from 'lucide-react';
+import { differenceInDays } from 'date-fns';
 
 import { motion, AnimatePresence } from 'motion/react';
+
+const apiKey = [
+  (process.env as any).GEMINI_API_KEY,
+  (import.meta as any).env.VITE_GEMINI_API_KEY,
+  ''
+].find(k => k && k !== 'undefined' && k !== 'null') || '';
 
 export const Bags: React.FC = () => {
   const [bags, setBags] = useState<any[]>([]);
@@ -17,12 +24,16 @@ export const Bags: React.FC = () => {
   const [formData, setFormData] = useState({
     brand: '',
     model: '',
-    condition: '',
+    serialNumber: '',
+    grading: 'Excellent',
+    conditionDetails: '',
     status: 'available',
     price: 0,
+    cost: 0,
     ownerId: '',
     notes: '',
-    photoUrl: ''
+    photoUrl: '',
+    entryDate: new Date().toISOString().split('T')[0]
   });
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -98,16 +109,33 @@ export const Bags: React.FC = () => {
       setFormData({
         brand: bag.brand || '',
         model: bag.model || '',
-        condition: bag.condition || '',
+        serialNumber: bag.serialNumber || '',
+        grading: bag.grading || 'Excellent',
+        conditionDetails: bag.conditionDetails || '',
         status: bag.status || 'available',
         price: bag.price || 0,
+        cost: bag.cost || 0,
         ownerId: bag.ownerId || '',
         notes: bag.notes || '',
-        photoUrl: bag.photoUrl || ''
+        photoUrl: bag.photoUrl || '',
+        entryDate: bag.entryDate || new Date().toISOString().split('T')[0]
       });
     } else {
       setEditingBag(null);
-      setFormData({ brand: '', model: '', condition: '', status: 'available', price: 0, ownerId: '', notes: '', photoUrl: '' });
+      setFormData({ 
+        brand: '', 
+        model: '', 
+        serialNumber: '',
+        grading: 'Excellent',
+        conditionDetails: '',
+        status: 'available', 
+        price: 0, 
+        cost: 0,
+        ownerId: '', 
+        notes: '', 
+        photoUrl: '',
+        entryDate: new Date().toISOString().split('T')[0]
+      });
     }
     setIsModalOpen(true);
   };
@@ -118,7 +146,8 @@ export const Bags: React.FC = () => {
     try {
       const dataToSave = {
         ...formData,
-        price: Number(formData.price)
+        price: Number(formData.price),
+        cost: Number(formData.cost)
       };
 
       if (editingBag) {
@@ -136,6 +165,35 @@ export const Bags: React.FC = () => {
       handleFirestoreError(err, editingBag ? OperationType.UPDATE : OperationType.CREATE, 'bags');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!editingBag) return;
+    
+    const confirmDelete = window.confirm(`¿Estás seguro que deseas eliminar la cartera "${editingBag.brand} ${editingBag.model}"? Esta acción no se puede deshacer.`);
+    
+    if (confirmDelete) {
+      setLoading(true);
+      try {
+        // Delete photo from storage if exists
+        if (editingBag.photoUrl) {
+          try {
+            const photoRef = ref(storage, editingBag.photoUrl);
+            await deleteObject(photoRef);
+          } catch (e) {
+            console.error("Error deleting image from storage:", e);
+          }
+        }
+        
+        await deleteDoc(doc(db, 'bags', editingBag.id));
+        await logActivity('Eliminación de Cartera', { brand: editingBag.brand, model: editingBag.model, id: editingBag.id });
+        setIsModalOpen(false);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, 'bags');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -212,10 +270,24 @@ export const Bags: React.FC = () => {
                     <span className="text-xs font-black text-brand-400 uppercase tracking-widest">Precio</span>
                     <span className="text-xl font-display font-black text-brand-900">${Number(bag.price || 0).toLocaleString()}</span>
                   </div>
+
+                  {bag.status === 'available' && bag.entryDate && (
+                    <div className="flex items-center gap-2 px-1 text-[10px] font-black text-brand-400 uppercase tracking-widest">
+                      <Clock className="h-3 w-3" />
+                      Antigüedad: {differenceInDays(new Date(), new Date(bag.entryDate))} días
+                    </div>
+                  )}
                   
                   <div className="flex justify-between text-sm px-1">
-                    <span className="text-brand-400 font-bold uppercase text-xs tracking-widest">Condición</span>
-                    <span className="font-bold text-brand-800">{bag.condition || 'N/A'}</span>
+                    <span className="text-brand-400 font-bold uppercase text-xs tracking-widest">Grading</span>
+                    <span className={`font-black ${
+                      bag.grading === 'Mint' ? 'text-brand-600' : 'text-brand-800'
+                    }`}>{bag.grading || 'Excellent'}</span>
+                  </div>
+
+                  <div className="flex justify-between text-sm px-1 pt-2">
+                    <span className="text-brand-400 font-bold uppercase text-xs tracking-widest">S/N</span>
+                    <span className="font-mono text-xs text-brand-500 font-bold">{bag.serialNumber || '---'}</span>
                   </div>
 
                   {bag.ownerId && (
@@ -263,14 +335,27 @@ export const Bags: React.FC = () => {
                 className="relative z-10 inline-block align-bottom bg-white rounded-3xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full"
               >
                 <div className="bg-white px-8 pt-8 pb-8">
-                  <div className="flex justify-between items-center mb-8">
-                    <h3 className="text-2xl font-display font-bold text-brand-950" id="modal-title">
-                      {editingBag ? 'Editar Cartera' : 'Nueva Cartera'}
-                    </h3>
-                    <button onClick={() => setIsModalOpen(false)} className="text-brand-300 hover:text-brand-500 p-2 rounded-full hover:bg-brand-50 transition-all">
-                      <X className="h-6 w-6" />
-                    </button>
-                  </div>
+                    <div className="flex justify-between items-center mb-8">
+                      <h3 className="text-2xl font-display font-bold text-brand-950" id="modal-title">
+                        {editingBag ? 'Editar Cartera' : 'Nueva Cartera'}
+                      </h3>
+                      <div className="flex items-center gap-2">
+                        {editingBag && (
+                          <button 
+                            type="button"
+                            onClick={handleDelete}
+                            disabled={loading}
+                            className="text-rose-400 hover:text-rose-600 p-2 rounded-full hover:bg-rose-50 transition-all"
+                            title="Eliminar Cartera"
+                          >
+                            <Trash2 className="h-5 w-5" />
+                          </button>
+                        )}
+                        <button onClick={() => setIsModalOpen(false)} className="text-brand-300 hover:text-brand-500 p-2 rounded-full hover:bg-brand-50 transition-all">
+                          <X className="h-6 w-6" />
+                        </button>
+                      </div>
+                    </div>
                   <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="flex justify-center mb-8">
                       <div className="relative group">
@@ -303,10 +388,36 @@ export const Bags: React.FC = () => {
                         <input type="text" value={formData.model} onChange={e => setFormData({...formData, model: e.target.value})} className="input-field" placeholder="Ej. Classic Flap" />
                       </div>
                     </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                       <div>
-                        <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2">Condición</label>
-                        <input type="text" value={formData.condition} onChange={e => setFormData({...formData, condition: e.target.value})} className="input-field" placeholder="Ej. Excelente" />
+                        <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                          <Hash className="h-3 w-3" /> Date Code / S/N
+                        </label>
+                        <input type="text" value={formData.serialNumber} onChange={e => setFormData({...formData, serialNumber: e.target.value})} className="input-field" placeholder="Ej. LP4101" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                          <ShieldCheck className="h-3 w-3" /> Grading Luxury *
+                        </label>
+                        <select required value={formData.grading} onChange={e => setFormData({...formData, grading: e.target.value})} className="input-field">
+                          <option value="Mint">Mint (Como nueva)</option>
+                          <option value="Excellent">Excellent (Mínimo uso)</option>
+                          <option value="Very Good">Very Good (Uso normal)</option>
+                          <option value="Fair">Fair (Desgaste visible)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2">Detalles de conservación</label>
+                      <textarea value={formData.conditionDetails} onChange={e => setFormData({...formData, conditionDetails: e.target.value})} rows={2} className="input-field" placeholder="Ej. Pátina en el asa, ligero roce en esquinas..." />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2">Fecha de Ingreso *</label>
+                        <input type="date" required value={formData.entryDate} onChange={e => setFormData({...formData, entryDate: e.target.value})} className="input-field" />
                       </div>
                       <div>
                         <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2">Estado *</label>
@@ -318,24 +429,31 @@ export const Bags: React.FC = () => {
                         </select>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 border-t border-brand-50 pt-6">
                       <div>
-                        <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2">Precio ($)</label>
-                        <input type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: parseFloat(e.target.value) || 0})} className="input-field" />
+                        <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2">Precio de Venta ($) *</label>
+                        <input type="number" step="0.01" required value={formData.price} onChange={e => setFormData({...formData, price: parseFloat(e.target.value) || 0})} className="input-field border-brand-200" />
                       </div>
                       <div>
-                        <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2">Propietario</label>
-                        <select value={formData.ownerId} onChange={e => setFormData({...formData, ownerId: e.target.value})} className="input-field">
-                          <option value="">-- Seleccionar Cliente --</option>
-                          {clients.map(c => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </select>
+                        <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2">Costo / Valor Pactado ($)</label>
+                        <input type="number" step="0.01" value={formData.cost} onChange={e => setFormData({...formData, cost: parseFloat(e.target.value) || 0})} className="input-field" />
                       </div>
                     </div>
+
                     <div>
-                      <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2">Notas</label>
-                      <textarea value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} rows={2} className="input-field" placeholder="Detalles sobre autenticidad, desgastes, etc..." />
+                      <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2">Propietario / Consignatario</label>
+                      <select value={formData.ownerId} onChange={e => setFormData({...formData, ownerId: e.target.value})} className="input-field">
+                        <option value="">-- LVSM (Inventario Propio) --</option>
+                        {clients.map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2">Notas del Catálogo</label>
+                      <textarea value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} rows={4} className="input-field" placeholder="Descripción para el cliente..." />
                     </div>
                     <div className="pt-4 flex flex-col sm:flex-row-reverse gap-3">
                       <button type="submit" disabled={loading} className="btn-primary flex-1">

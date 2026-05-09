@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { collection, query, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { Users, ShoppingBag, Calendar, Share2, ExternalLink, Download } from 'lucide-react';
+import { Users, ShoppingBag, Calendar, Share2, ExternalLink, Download, PieChart, AlertTriangle, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { differenceInDays } from 'date-fns';
 
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -11,6 +12,8 @@ export const Dashboard: React.FC = () => {
     clients: 0,
     bags: 0,
     visits: 0,
+    tiedValue: 0,
+    oldStockCount: 0
   });
 
   useEffect(() => {
@@ -20,7 +23,25 @@ export const Dashboard: React.FC = () => {
     );
     
     const unsubBags = onSnapshot(collection(db, 'bags'), 
-      (snapshot) => setStats(s => ({ ...s, bags: snapshot.size })),
+      (snapshot) => {
+        const bagsData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        const availableBags = bagsData.filter((b: any) => b.status === 'available');
+        
+        const tiedValue = availableBags.reduce((acc, b: any) => acc + (Number(b.cost) || 0), 0);
+        
+        const now = new Date();
+        const oldStock = availableBags.filter((b: any) => {
+          const dateToUse = b.entryDate ? new Date(b.entryDate) : (b.createdAt?.toDate ? b.createdAt.toDate() : (b.createdAt ? new Date(b.createdAt) : now));
+          return differenceInDays(now, dateToUse) > 30; // Más de 30 días es stock lento
+        });
+
+        setStats(s => ({ 
+          ...s, 
+          bags: availableBags.length,
+          tiedValue,
+          oldStockCount: oldStock.length
+        }));
+      },
       (error) => handleFirestoreError(error, OperationType.GET, 'bags')
     );
 
@@ -38,7 +59,7 @@ export const Dashboard: React.FC = () => {
 
   const statCards = [
     { name: 'Total Clientes', value: stats.clients, icon: Users, color: 'bg-brand-100 text-brand-600' },
-    { name: 'Carteras en Stock', value: stats.bags, icon: ShoppingBag, color: 'bg-brand-100 text-brand-600' },
+    { name: 'Stock Disponible', value: stats.bags, icon: ShoppingBag, color: 'bg-brand-100 text-brand-600' },
     { name: 'Visitas Hoy', value: stats.visits, icon: Calendar, color: 'bg-brand-100 text-brand-600' },
   ];
 
@@ -102,28 +123,73 @@ export const Dashboard: React.FC = () => {
         })}
       </div>
 
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.4 }}
-        className="glass-card p-10 bg-gradient-to-br from-white to-brand-50 border-none shadow-xl shadow-brand-100/50"
-      >
-        <div className="max-w-2xl">
-          <h2 className="text-3xl font-display font-bold text-brand-950 mb-4">Excelencia en el mercado de lujo</h2>
-          <p className="text-brand-800 leading-relaxed mb-8 font-medium">
-            Gestiona tu inventario de piezas exclusivas y mantén el estándar de calidad que define a LVSM. 
-            Cada detalle cuenta en la experiencia de tus clientes.
-          </p>
-          <div className="flex flex-wrap gap-4">
-            <Link to="/clients" className="text-brand-600 font-bold hover:text-brand-800 flex items-center gap-2 transition-colors">
-              Gestionar Clientes <ExternalLink className="h-4 w-4" />
-            </Link>
-            <Link to="/bags" className="text-brand-600 font-bold hover:text-brand-800 flex items-center gap-2 transition-colors">
-              Ver Inventario <ExternalLink className="h-4 w-4" />
-            </Link>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <motion.div 
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.3 }}
+          className="glass-card p-10 bg-brand-950 text-brand-100 overflow-hidden relative"
+        >
+          <div className="relative z-10">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-3 bg-brand-800 rounded-xl">
+                <PieChart className="h-6 w-6 text-brand-200" />
+              </div>
+              <h2 className="text-2xl font-display font-bold uppercase tracking-widest">Análisis de Riesgo</h2>
+            </div>
+            
+            <div className="space-y-8">
+              <div>
+                <p className="text-xs font-black text-brand-400 uppercase tracking-[0.3em] mb-2">Valor Inmovilizado</p>
+                <p className="text-4xl font-display font-black text-white">${stats.tiedValue.toLocaleString()}</p>
+                <p className="text-[10px] text-brand-500 font-bold uppercase tracking-widest mt-2">Capital total en inventario disponible</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <div className="p-4 bg-brand-900/50 rounded-2xl border border-brand-800">
+                  <TrendingUp className="h-5 w-5 text-emerald-400 mb-2" />
+                  <p className="text-[10px] font-black text-brand-400 uppercase tracking-widest mb-1">Stock Saludable</p>
+                  <p className="text-xl font-display font-black">{stats.bags - stats.oldStockCount}</p>
+                </div>
+                <div className="p-4 bg-brand-900/50 rounded-2xl border border-brand-800">
+                  <AlertTriangle className={`h-5 w-5 mb-2 ${stats.oldStockCount > 0 ? 'text-amber-400' : 'text-brand-600'}`} />
+                  <p className="text-[10px] font-black text-brand-400 uppercase tracking-widest mb-1">Rotación Lenta</p>
+                  <p className="text-xl font-display font-black">{stats.oldStockCount}</p>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      </motion.div>
+          <div className="absolute -bottom-10 -right-10 opacity-10">
+            <TrendingUp className="h-48 w-48 text-brand-500" />
+          </div>
+        </motion.div>
+
+        <motion.div 
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.4 }}
+          className="glass-card p-10 bg-gradient-to-br from-white to-brand-50 border-none shadow-xl shadow-brand-100/50"
+        >
+          <div className="max-w-2xl h-full flex flex-col">
+            <h2 className="text-3xl font-display font-bold text-brand-950 mb-4 tracking-tight">Excelencia LVSM</h2>
+            <p className="text-brand-800 leading-relaxed mb-8 font-medium">
+              Gestiona tu inventario de piezas exclusivas y mantén el estándar de calidad que define a LVSM. 
+              Utiliza el análisis de riesgo para optimizar tu flujo de caja.
+            </p>
+            <div className="mt-auto flex flex-wrap gap-6 border-t border-brand-100 pt-8">
+              <Link to="/clients" className="group text-brand-600 font-bold hover:text-brand-800 flex items-center gap-2 transition-all uppercase text-[10px] tracking-[0.2em]">
+                Clientes <ExternalLink className="h-4 w-4 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+              </Link>
+              <Link to="/bags" className="group text-brand-600 font-bold hover:text-brand-800 flex items-center gap-2 transition-all uppercase text-[10px] tracking-[0.2em]">
+                Inventario <ExternalLink className="h-4 w-4 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+              </Link>
+              <Link to="/history" className="group text-brand-600 font-bold hover:text-brand-800 flex items-center gap-2 transition-all uppercase text-[10px] tracking-[0.2em]">
+                Historial <ExternalLink className="h-4 w-4 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+              </Link>
+            </div>
+          </div>
+        </motion.div>
+      </div>
     </motion.div>
   );
 };

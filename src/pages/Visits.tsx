@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, orderBy, addDoc, updateDoc, doc, Timestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, addDoc, updateDoc, doc, Timestamp, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, logActivity } from '../firebase';
-import { Plus, Calendar as CalendarIcon, Clock, MapPin, Edit2, X, Tag, CalendarPlus } from 'lucide-react';
+import { Plus, Calendar as CalendarIcon, Clock, MapPin, Edit2, X, Tag, CalendarPlus, Trash2 } from 'lucide-react';
 import { format, addHours } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -125,6 +125,26 @@ export const Visits: React.FC = () => {
       handleFirestoreError(err, editingVisit ? OperationType.UPDATE : OperationType.CREATE, 'visits');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteVisit = async () => {
+    if (!editingVisit) return;
+    
+    const clientName = clients[editingVisit.clientId]?.name || 'Cliente Desconocido';
+    const confirmDelete = window.confirm(`¿Estás seguro que deseas eliminar la visita del cliente "${clientName}"? Esta acción no se puede deshacer.`);
+    
+    if (confirmDelete) {
+      setLoading(true);
+      try {
+        await deleteDoc(doc(db, 'visits', editingVisit.id));
+        await logActivity('Eliminación de Visita', { clientId: editingVisit.clientId, id: editingVisit.id });
+        setIsModalOpen(false);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, 'visits');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -292,14 +312,27 @@ export const Visits: React.FC = () => {
                 className="relative z-10 inline-block align-bottom bg-white rounded-3xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full"
               >
                 <div className="bg-white px-8 pt-8 pb-8">
-                  <div className="flex justify-between items-center mb-8">
-                    <h3 className="text-2xl font-display font-bold text-brand-950" id="modal-title">
-                      {editingVisit ? 'Editar Visita' : 'Agendar Visita'}
-                    </h3>
-                    <button onClick={() => setIsModalOpen(false)} className="text-brand-300 hover:text-brand-500 p-2 rounded-full hover:bg-brand-50 transition-all">
-                      <X className="h-6 w-6" />
-                    </button>
-                  </div>
+                    <div className="flex justify-between items-center mb-8">
+                      <h3 className="text-2xl font-display font-bold text-brand-950" id="modal-title">
+                        {editingVisit ? 'Editar Visita' : 'Agendar Visita'}
+                      </h3>
+                      <div className="flex items-center gap-2">
+                        {editingVisit && (
+                          <button 
+                            type="button"
+                            onClick={handleDeleteVisit}
+                            disabled={loading}
+                            className="text-rose-400 hover:text-rose-600 p-2 rounded-full hover:bg-rose-50 transition-all"
+                            title="Eliminar Visita"
+                          >
+                            <Trash2 className="h-5 w-5" />
+                          </button>
+                        )}
+                        <button onClick={() => setIsModalOpen(false)} className="text-brand-300 hover:text-brand-500 p-2 rounded-full hover:bg-brand-50 transition-all">
+                          <X className="h-6 w-6" />
+                        </button>
+                      </div>
+                    </div>
                   <form onSubmit={handleSubmit} className="space-y-6">
                     <div>
                       <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2">Cliente *</label>

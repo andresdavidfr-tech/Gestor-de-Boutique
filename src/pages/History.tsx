@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'motion/react';
 export const History: React.FC = () => {
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
 
   useEffect(() => {
     const q = query(collection(db, 'history'), orderBy('timestamp', 'desc'), limit(50));
@@ -27,6 +28,15 @@ export const History: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  const filteredHistory = history.filter(item => {
+    if (filter === 'all') return true;
+    if (filter === 'transactions') return item.action.includes('Transacción');
+    if (filter === 'visits') return item.action.includes('Visita');
+    if (filter === 'bags') return item.action.includes('Cartera');
+    if (filter === 'clients') return item.action.includes('Cliente');
+    return true;
+  });
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
@@ -39,12 +49,30 @@ export const History: React.FC = () => {
           <h1 className="text-4xl font-display font-black text-brand-950 tracking-tight">Historial</h1>
           <p className="text-brand-500 font-medium">Registro de actividad de la boutique</p>
         </div>
+        <div className="flex flex-wrap gap-2">
+          {['all', 'transactions', 'visits', 'bags', 'clients'].map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                filter === f 
+                  ? 'bg-brand-950 text-brand-100 shadow-lg' 
+                  : 'bg-white text-brand-400 hover:bg-brand-50 border border-brand-50'
+              }`}
+            >
+              {f === 'all' ? 'Ver Todo' : 
+               f === 'transactions' ? 'Transacciones' : 
+               f === 'visits' ? 'Visitas' : 
+               f === 'bags' ? 'Inventario' : 'Clientes'}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="glass-card overflow-hidden border-none shadow-xl shadow-brand-100/20">
         <ul className="divide-y divide-brand-50">
           <AnimatePresence mode="popLayout">
-            {history.map((item, idx) => {
+            {filteredHistory.map((item, idx) => {
               const timestamp = item.timestamp?.toDate ? item.timestamp.toDate() : new Date(item.timestamp);
               return (
                 <motion.li 
