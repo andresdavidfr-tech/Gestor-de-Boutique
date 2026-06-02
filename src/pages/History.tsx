@@ -30,10 +30,11 @@ export const History: React.FC = () => {
 
   const filteredHistory = history.filter(item => {
     if (filter === 'all') return true;
-    if (filter === 'transactions') return item.action.includes('Transacción');
-    if (filter === 'visits') return item.action.includes('Visita');
-    if (filter === 'bags') return item.action.includes('Cartera');
-    if (filter === 'clients') return item.action.includes('Cliente');
+    const action = item.action || '';
+    if (filter === 'transactions') return action.includes('Transacción') || action.includes('Movimiento');
+    if (filter === 'visits') return action.includes('Visita');
+    if (filter === 'bags') return action.includes('Cartera');
+    if (filter === 'clients') return action.includes('Cliente');
     return true;
   });
 

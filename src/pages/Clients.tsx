@@ -248,6 +248,8 @@ export const Clients: React.FC = () => {
 
   const openTransactionModal = (client: any) => {
     setSelectedClientForTransaction(client);
+    setEditingTransaction(null);
+    setTransactionFormData({ type: 'sold', amount: 0, notes: '' });
     setIsTransactionModalOpen(true);
   };
 
@@ -290,7 +292,7 @@ export const Clients: React.FC = () => {
         const client = clients.find(c => c.id === tx.clientId);
         return {
           Cliente: client ? client.name : 'Desconocido',
-          Tipo: tx.type === 'payment_received' ? 'Cobranza' : 'Pago',
+          Tipo: tx.type === 'sold' ? 'Venta' : tx.type === 'paid' ? 'Cobro' : 'Adeudo',
           Monto: tx.amount,
           Notas: tx.notes,
           Fecha: tx.date?.toDate ? tx.date.toDate().toLocaleDateString() : ''
@@ -302,7 +304,7 @@ export const Clients: React.FC = () => {
         return {
           Marca: bag.brand,
           Modelo: bag.model,
-          Condición: bag.condition,
+          Condición: bag.grading,
           Estado: bag.status,
           Precio: bag.price,
           Propietario: client ? client.name : 'Ninguno',
