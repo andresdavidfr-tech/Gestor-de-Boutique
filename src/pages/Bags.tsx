@@ -13,6 +13,63 @@ const apiKey = [
   ''
 ].find(k => k && k !== 'undefined' && k !== 'null') || '';
 
+// Las fotos del carrete (especialmente en iPhone) suelen ser archivos de
+// varios MB en HEIC/JPEG. Subirlas tal cual hace que la carga quede "colgada"
+// en conexiones móviles. Redimensionamos y reexportamos a JPEG en el navegador
+// para acelerar la subida y normalizar el formato.
+const compressImage = (file: File, maxDimension = 1280, quality = 0.82): Promise<Blob> => {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      let { width, height } = img;
+      if (!width || !height) {
+        reject(new Error('Dimensiones de imagen inválidas'));
+        return;
+      }
+      if (width > maxDimension || height > maxDimension) {
+        if (width >= height) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        } else {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('No se pudo crear el contexto de canvas'));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error('No se pudo comprimir la imagen'))),
+        'image/jpeg',
+        quality
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('No se pudo decodificar la imagen'));
+    };
+    img.src = objectUrl;
+  });
+};
+
+// Evita que la UI quede colgada indefinidamente si la red no responde.
+const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(Object.assign(new Error('timeout'), { code: 'app/timeout' })), ms)
+    )
+  ]);
+};
+
 export const Bags: React.FC = () => {
   const [bags, setBags] = useState<any[]>([]);
   const [clients, setClients] = useState<any[]>([]);
@@ -44,21 +101,40 @@ export const Bags: React.FC = () => {
 
     setUploading(true);
     try {
-      const storageRef = ref(storage, `bags/${Date.now()}_${file.name}`);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
+      // Comprimir/redimensionar antes de subir. Si el navegador no puede
+      // procesar el archivo (formato no soportado), usamos el original.
+      let dataToUpload: Blob = file;
+      let contentType = file.type || 'image/jpeg';
+      try {
+        dataToUpload = await compressImage(file);
+        contentType = 'image/jpeg';
+      } catch (compressErr) {
+        console.warn('No se pudo comprimir la imagen, se sube el archivo original:', compressErr);
+        dataToUpload = file;
+      }
+
+      const ext = contentType === 'image/jpeg' ? 'jpg' : (file.name.split('.').pop() || 'img');
+      const storageRef = ref(storage, `bags/${Date.now()}.${ext}`);
+      await withTimeout(uploadBytes(storageRef, dataToUpload, { contentType }), 60000);
+      const url = await withTimeout(getDownloadURL(storageRef), 30000);
       setFormData(prev => ({ ...prev, photoUrl: url }));
     } catch (error: any) {
       console.error("Error uploading photo:", error);
       let message = "Error al subir la foto.";
-      if (error.code === 'storage/unauthorized') {
+      if (error.code === 'app/timeout') {
+        message = "La subida tardó demasiado. Verifica tu conexión e intenta nuevamente con una foto más liviana.";
+      } else if (error.code === 'storage/unauthorized') {
         message = "No tienes permisos para subir archivos. Revisa las reglas de Storage en Firebase.";
       } else if (error.code === 'storage/canceled') {
         message = "Carga cancelada.";
+      } else if (error.code === 'storage/retry-limit-exceeded') {
+        message = "Se agotó el tiempo de subida por la conexión. Intenta nuevamente.";
       }
       alert(message);
     } finally {
       setUploading(false);
+      // Permite volver a seleccionar el mismo archivo si hubo un error.
+      e.target.value = '';
     }
   };
 
