@@ -3,7 +3,7 @@ import { collection, query, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Users, ShoppingBag, Calendar, Share2, ExternalLink, Download, PieChart, AlertTriangle, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { differenceInDays } from 'date-fns';
+import { differenceInDays, isToday } from 'date-fns';
 
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -45,8 +45,16 @@ export const Dashboard: React.FC = () => {
       (error) => handleFirestoreError(error, OperationType.GET, 'bags')
     );
 
-    const unsubVisits = onSnapshot(collection(db, 'visits'), 
-      (snapshot) => setStats(s => ({ ...s, visits: snapshot.size })),
+    const unsubVisits = onSnapshot(collection(db, 'visits'),
+      (snapshot) => {
+        const todayVisits = snapshot.docs.filter(d => {
+          const data: any = d.data();
+          if (!data.date) return false;
+          const visitDate = data.date?.toDate ? data.date.toDate() : new Date(data.date);
+          return !isNaN(visitDate.getTime()) && isToday(visitDate);
+        });
+        setStats(s => ({ ...s, visits: todayVisits.length }));
+      },
       (error) => handleFirestoreError(error, OperationType.GET, 'visits')
     );
 
