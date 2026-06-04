@@ -2,6 +2,8 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { X, ShoppingBag } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ToastProvider } from './components/ui/Toast';
+import { ConfirmProvider } from './components/ui/ConfirmDialog';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { PublicClientForm } from './pages/PublicClientForm';
@@ -97,8 +99,10 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <BrowserRouter>
-          <Routes>
+        <ToastProvider>
+          <ConfirmProvider>
+            <BrowserRouter>
+              <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/public/client-form" element={<PublicClientForm />} />
             
@@ -109,8 +113,10 @@ export default function App() {
               <Route path="visits/*" element={<Visits />} />
               <Route path="history" element={<History />} />
             </Route>
-          </Routes>
-        </BrowserRouter>
+              </Routes>
+            </BrowserRouter>
+          </ConfirmProvider>
+        </ToastProvider>
       </AuthProvider>
     </ErrorBoundary>
   );
