@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { X, ShoppingBag } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -6,12 +6,20 @@ import { ToastProvider } from './components/ui/Toast';
 import { ConfirmProvider } from './components/ui/ConfirmDialog';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
-import { PublicClientForm } from './pages/PublicClientForm';
-import { Dashboard } from './pages/Dashboard';
-import { Clients } from './pages/Clients';
-import { Bags } from './pages/Bags';
-import { Visits } from './pages/Visits';
-import { History } from './pages/History';
+
+// Lazy-load route pages so the initial bundle stays small (code-splitting).
+const PublicClientForm = lazy(() => import('./pages/PublicClientForm').then((m) => ({ default: m.PublicClientForm })));
+const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })));
+const Clients = lazy(() => import('./pages/Clients').then((m) => ({ default: m.Clients })));
+const Bags = lazy(() => import('./pages/Bags').then((m) => ({ default: m.Bags })));
+const Visits = lazy(() => import('./pages/Visits').then((m) => ({ default: m.Visits })));
+const History = lazy(() => import('./pages/History').then((m) => ({ default: m.History })));
+
+const RouteFallback = () => (
+  <div className="min-h-[60vh] flex items-center justify-center">
+    <ShoppingBag className="h-10 w-10 text-brand-300 animate-pulse" />
+  </div>
+);
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -102,18 +110,20 @@ export default function App() {
         <ToastProvider>
           <ConfirmProvider>
             <BrowserRouter>
-              <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/public/client-form" element={<PublicClientForm />} />
-            
-            <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-              <Route index element={<Dashboard />} />
-              <Route path="clients/*" element={<Clients />} />
-              <Route path="bags/*" element={<Bags />} />
-              <Route path="visits/*" element={<Visits />} />
-              <Route path="history" element={<History />} />
-            </Route>
-              </Routes>
+              <Suspense fallback={<RouteFallback />}>
+                <Routes>
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/public/client-form" element={<PublicClientForm />} />
+
+                  <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+                    <Route index element={<Dashboard />} />
+                    <Route path="clients/*" element={<Clients />} />
+                    <Route path="bags/*" element={<Bags />} />
+                    <Route path="visits/*" element={<Visits />} />
+                    <Route path="history" element={<History />} />
+                  </Route>
+                </Routes>
+              </Suspense>
             </BrowserRouter>
           </ConfirmProvider>
         </ToastProvider>

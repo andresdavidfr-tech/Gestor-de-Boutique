@@ -1,15 +1,23 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { collection, query, onSnapshot, orderBy, addDoc, updateDoc, doc, serverTimestamp, where, limit, increment, getDocs, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, logActivity } from '../firebase';
-import { Plus, Search, MapPin, Edit2, X, Users, DollarSign, History as HistoryIcon, Download, ShoppingBag, Trash2 } from 'lucide-react';
-import * as XLSX from 'xlsx';
-
+import { Plus, Search, MapPin, Edit2, Users, DollarSign, History as HistoryIcon, Download, ShoppingBag, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import type { Client } from '../types';
+import { Modal } from '../components/ui/Modal';
+import { useToast } from '../components/ui/Toast';
+import { useConfirm } from '../components/ui/ConfirmDialog';
+import { useCollection } from '../hooks/useCollection';
+import { useDebounce } from '../hooks/useDebounce';
+import { TRANSACTION_LABEL } from '../lib/status';
 
 export const Clients: React.FC = () => {
-  const [clients, setClients] = useState<any[]>([]);
+  const { data: clients } = useCollection<Client>(() => query(collection(db, 'clients'), orderBy('createdAt', 'desc')));
   const [searchTerm, setSearchTerm] = useState('');
-  
+  const debouncedSearch = useDebounce(searchTerm, 250);
+  const toast = useToast();
+  const confirm = useConfirm();
+
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
@@ -65,21 +73,6 @@ export const Clients: React.FC = () => {
   };
 
   useEffect(() => {
-    const q = query(collection(db, 'clients'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const clientsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setClients(clientsData);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'clients');
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
     if (selectedClientForTransaction) {
       const q = query(
         collection(db, 'transactions'), 
@@ -94,10 +87,15 @@ export const Clients: React.FC = () => {
     }
   }, [selectedClientForTransaction]);
 
-  const filteredClients = clients.filter(client => 
-    (client.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-    (client.email?.toLowerCase() || '').includes(searchTerm.toLowerCase())
-  );
+  const filteredClients = useMemo(() => {
+    const term = debouncedSearch.toLowerCase().trim();
+    if (!term) return clients;
+    return clients.filter(client =>
+      (client.name?.toLowerCase() || '').includes(term) ||
+      (client.email?.toLowerCase() || '').includes(term) ||
+      (client.phone?.toLowerCase() || '').includes(term)
+    );
+  }, [clients, debouncedSearch]);
 
   const openModal = (client?: any) => {
     if (client) {
@@ -191,11 +189,13 @@ export const Clients: React.FC = () => {
         });
       }
 
+      toast.success(editingTransaction ? 'Movimiento actualizado' : `${actionLabel} registrada`);
       setTransactionFormData({ type: 'sold', amount: 0, notes: '' });
       setEditingTransaction(null);
       setIsTransactionModalOpen(false);
     } catch (err) {
-      handleFirestoreError(err, editingTransaction ? OperationType.UPDATE : OperationType.CREATE, 'transactions');
+      toast.error('No se pudo registrar el movimiento.');
+      try { handleFirestoreError(err, editingTransaction ? OperationType.UPDATE : OperationType.CREATE, 'transactions'); } catch { /* logged */ }
     } finally {
       setLoading(false);
     }
@@ -212,37 +212,43 @@ export const Clients: React.FC = () => {
 
   const handleDeleteTransaction = async (tx: any) => {
     if (!selectedClientForTransaction) return;
-    
-    const confirmDelete = window.confirm(`¿Estás seguro que deseas eliminar este movimiento de $${tx.amount}? El balance del cliente se ajustará automáticamente.`);
-    
-    if (confirmDelete) {
-      setLoading(true);
-      try {
-        // Reverse balance change
-        const amount = Number(tx.amount);
-        const type = tx.type;
-        const balanceChange = type === 'paid' ? -amount : amount;
 
-        await deleteDoc(doc(db, 'transactions', tx.id));
-        
-        await updateDoc(doc(db, 'clients', selectedClientForTransaction.id), {
-          balance: increment(-balanceChange)
-        });
+    const ok = await confirm({
+      title: 'Eliminar movimiento',
+      message: `Se eliminará el movimiento de $${Number(tx.amount).toFixed(2)}. El balance del cliente se ajustará automáticamente.`,
+      confirmLabel: 'Eliminar',
+      danger: true,
+    });
+    if (!ok) return;
 
-        await logActivity('Movimiento Eliminado', { 
-          clientName: selectedClientForTransaction.name, 
-          amount: tx.amount 
-        });
+    setLoading(true);
+    try {
+      // Reverse balance change
+      const amount = Number(tx.amount);
+      const type = tx.type;
+      const balanceChange = type === 'paid' ? -amount : amount;
 
-        if (editingTransaction?.id === tx.id) {
-          setEditingTransaction(null);
-          setTransactionFormData({ type: 'sold', amount: 0, notes: '' });
-        }
-      } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, 'transactions');
-      } finally {
-        setLoading(false);
+      await deleteDoc(doc(db, 'transactions', tx.id));
+
+      await updateDoc(doc(db, 'clients', selectedClientForTransaction.id), {
+        balance: increment(-balanceChange)
+      });
+
+      await logActivity('Movimiento Eliminado', {
+        clientName: selectedClientForTransaction.name,
+        amount: tx.amount
+      });
+
+      if (editingTransaction?.id === tx.id) {
+        setEditingTransaction(null);
+        setTransactionFormData({ type: 'sold', amount: 0, notes: '' });
       }
+      toast.success('Movimiento eliminado');
+    } catch (err) {
+      toast.error('No se pudo eliminar el movimiento.');
+      try { handleFirestoreError(err, OperationType.DELETE, 'transactions'); } catch { /* logged */ }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -256,6 +262,10 @@ export const Clients: React.FC = () => {
   const exportToExcel = async () => {
     setLoading(true);
     try {
+      // Carga diferida de la librería de Excel (solo al exportar) para no
+      // inflar el bundle inicial de la página de Clientes.
+      const XLSX = await import('xlsx');
+
       // Fetch all transactions
       const txSnapshot = await getDocs(collection(db, 'transactions'));
       const allTx = txSnapshot.docs.map(d => ({id: d.id, ...d.data()}));
@@ -292,7 +302,7 @@ export const Clients: React.FC = () => {
         const client = clients.find(c => c.id === tx.clientId);
         return {
           Cliente: client ? client.name : 'Desconocido',
-          Tipo: tx.type === 'sold' ? 'Venta' : tx.type === 'paid' ? 'Cobro' : 'Adeudo',
+          Tipo: TRANSACTION_LABEL[tx.type] || tx.type,
           Monto: tx.amount,
           Notas: tx.notes,
           Fecha: tx.date?.toDate ? tx.date.toDate().toLocaleDateString() : ''
@@ -329,8 +339,10 @@ export const Clients: React.FC = () => {
 
       XLSX.writeFile(workbook, `Reporte_Vintage_LVSM_${new Date().toISOString().split('T')[0]}.xlsx`);
       logActivity('Exportación Excel Completa', { count: clients.length });
+      toast.success('Reporte Excel generado');
     } catch (error) {
       console.error("Error exporting to excel", error);
+      toast.error('No se pudo generar el Excel.');
     } finally {
       setLoading(false);
     }
@@ -348,16 +360,19 @@ export const Clients: React.FC = () => {
       if (editingClient) {
         await updateDoc(doc(db, 'clients', editingClient.id), dataToSave);
         await logActivity('Actualización de Cliente', { name: dataToSave.name, id: editingClient.id });
+        toast.success('Cliente actualizado');
       } else {
         const docRef = await addDoc(collection(db, 'clients'), {
           ...dataToSave,
           createdAt: serverTimestamp()
         });
         await logActivity('Nuevo Cliente', { name: dataToSave.name, id: docRef.id });
+        toast.success('Cliente agregado');
       }
       setIsModalOpen(false);
     } catch (err) {
-      handleFirestoreError(err, editingClient ? OperationType.UPDATE : OperationType.CREATE, 'clients');
+      toast.error('No se pudo guardar el cliente. Reintentá.');
+      try { handleFirestoreError(err, editingClient ? OperationType.UPDATE : OperationType.CREATE, 'clients'); } catch { /* logged */ }
     } finally {
       setLoading(false);
     }
@@ -365,20 +380,27 @@ export const Clients: React.FC = () => {
 
   const handleDeleteClient = async () => {
     if (!editingClient) return;
-    
-    const confirmDelete = window.confirm(`¿Estás seguro que deseas eliminar al cliente "${editingClient.name}"? Esta acción no se puede deshacer y los registros asociados podrían quedar huérfanos.`);
-    
-    if (confirmDelete) {
-      setLoading(true);
-      try {
-        await deleteDoc(doc(db, 'clients', editingClient.id));
-        await logActivity('Eliminación de Cliente', { name: editingClient.name, id: editingClient.id });
-        setIsModalOpen(false);
-      } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, 'clients');
-      } finally {
-        setLoading(false);
-      }
+
+    const ok = await confirm({
+      title: 'Eliminar cliente',
+      message: `Se eliminará a "${editingClient.name}". Esta acción no se puede deshacer y los registros asociados podrían quedar huérfanos.`,
+      confirmLabel: 'Eliminar definitivamente',
+      danger: true,
+      requireText: editingClient.name,
+    });
+    if (!ok) return;
+
+    setLoading(true);
+    try {
+      await deleteDoc(doc(db, 'clients', editingClient.id));
+      await logActivity('Eliminación de Cliente', { name: editingClient.name, id: editingClient.id });
+      setIsModalOpen(false);
+      toast.success('Cliente eliminado');
+    } catch (err) {
+      toast.error('No se pudo eliminar el cliente.');
+      try { handleFirestoreError(err, OperationType.DELETE, 'clients'); } catch { /* logged */ }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -505,39 +527,14 @@ export const Clients: React.FC = () => {
       </div>
 
       {/* Transaction Modal */}
-      <AnimatePresence>
-        {isTransactionModalOpen && selectedClientForTransaction && (
-          <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-            <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-brand-950/40 backdrop-blur-sm transition-opacity" 
-                aria-hidden="true" 
-                onClick={() => setIsTransactionModalOpen(false)}
-              ></motion.div>
-              <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                onClick={(e) => e.stopPropagation()}
-                className="relative z-10 inline-block align-bottom bg-white rounded-3xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full"
-              >
-                <div className="bg-white px-8 pt-8 pb-8">
-                  <div className="flex justify-between items-center mb-8">
-                    <div>
-                      <h3 className="text-2xl font-display font-bold text-brand-950">
-                        Administrar Saldo
-                      </h3>
-                      <p className="text-brand-500 font-medium text-sm">{selectedClientForTransaction.name}</p>
-                    </div>
-                    <button onClick={() => setIsTransactionModalOpen(false)} className="text-brand-300 hover:text-brand-500 p-2 rounded-full hover:bg-brand-50 transition-all">
-                      <X className="h-6 w-6" />
-                    </button>
-                  </div>
-
+      <Modal
+        open={isTransactionModalOpen && !!selectedClientForTransaction}
+        onClose={() => setIsTransactionModalOpen(false)}
+        title="Administrar Saldo"
+        subtitle={selectedClientForTransaction?.name}
+      >
+        {selectedClientForTransaction && (
+          <>
                     <div className="mb-8 p-6 bg-brand-50 rounded-2xl flex items-center justify-between">
                       <span className="text-xs font-black text-brand-500 uppercase tracking-widest">Balance Actual</span>
                       <span className={`text-2xl font-display font-black ${
@@ -662,7 +659,7 @@ export const Clients: React.FC = () => {
                             </div>
                             <div>
                               <p className="text-xs font-bold text-brand-900">
-                                {t.type === 'sold' ? 'Venta' : t.type === 'paid' ? 'Cobro' : 'Adeudo'}
+                                {TRANSACTION_LABEL[t.type] || t.type}
                               </p>
                               <p className="text-[10px] text-brand-400 font-medium">
                                 {t.date?.toDate ? t.date.toDate().toLocaleDateString() : 'Reciente'}
@@ -681,56 +678,19 @@ export const Clients: React.FC = () => {
                       )}
                     </div>
                   </div>
-                </div>
-              </motion.div>
-            </div>
-          </div>
+          </>
         )}
-      </AnimatePresence>
+      </Modal>
 
       {/* Modal */}
-      <AnimatePresence>
-        {isModalOpen && (
-          <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-            <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-brand-950/40 backdrop-blur-sm transition-opacity" 
-                aria-hidden="true" 
-                onClick={() => setIsModalOpen(false)}
-              ></motion.div>
-              <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                onClick={(e) => e.stopPropagation()}
-                className="relative z-10 inline-block align-bottom bg-white rounded-3xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full"
-              >
-                <div className="bg-white px-8 pt-8 pb-8">
-                    <div className="flex justify-between items-center mb-8">
-                      <h3 className="text-2xl font-display font-bold text-brand-950" id="modal-title">
-                        {editingClient ? 'Editar Cliente' : 'Nuevo Cliente'}
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        {editingClient && (
-                          <button 
-                            type="button"
-                            onClick={handleDeleteClient}
-                            disabled={loading}
-                            className="text-rose-400 hover:text-rose-600 p-2 rounded-full hover:bg-rose-50 transition-all"
-                            title="Eliminar Cliente"
-                          >
-                            <Trash2 className="h-5 w-5" />
-                          </button>
-                        )}
-                        <button onClick={() => setIsModalOpen(false)} className="text-brand-300 hover:text-brand-500 p-2 rounded-full hover:bg-brand-50 transition-all">
-                          <X className="h-6 w-6" />
-                        </button>
-                      </div>
-                    </div>
+      <Modal
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingClient ? 'Editar Cliente' : 'Nuevo Cliente'}
+        onDelete={editingClient ? handleDeleteClient : undefined}
+        deleteDisabled={loading}
+        deleteTitle="Eliminar Cliente"
+      >
                   <form onSubmit={handleSubmit} className="space-y-6">
                     <div>
                       <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2">Nombre Completo *</label>
@@ -843,12 +803,7 @@ export const Clients: React.FC = () => {
                       </button>
                     </div>
                   </form>
-                </div>
-              </motion.div>
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
+      </Modal>
     </motion.div>
   );
 };

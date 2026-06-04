@@ -1,32 +1,18 @@
-import React, { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, orderBy, limit } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import React, { useState } from 'react';
+import { collection, query, orderBy, limit } from 'firebase/firestore';
+import { db } from '../firebase';
 import { History as HistoryIcon, Clock, User, Activity } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
+import type { HistoryEntry } from '../types';
+import { useCollection } from '../hooks/useCollection';
 
 export const History: React.FC = () => {
-  const [history, setHistory] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: history, loading } = useCollection<HistoryEntry>(() =>
+    query(collection(db, 'history'), orderBy('timestamp', 'desc'), limit(50))
+  );
   const [filter, setFilter] = useState('all');
-
-  useEffect(() => {
-    const q = query(collection(db, 'history'), orderBy('timestamp', 'desc'), limit(50));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const historyData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setHistory(historyData);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'history');
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
 
   const filteredHistory = history.filter(item => {
     if (filter === 'all') return true;
@@ -74,7 +60,7 @@ export const History: React.FC = () => {
         <ul className="divide-y divide-brand-50">
           <AnimatePresence mode="popLayout">
             {filteredHistory.map((item, idx) => {
-              const timestamp = item.timestamp?.toDate ? item.timestamp.toDate() : new Date(item.timestamp);
+              const timestamp = item.timestamp?.toDate ? item.timestamp.toDate() : new Date();
               return (
                 <motion.li 
                   key={item.id} 
