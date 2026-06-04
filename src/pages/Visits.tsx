@@ -1,11 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { collection, query, onSnapshot, orderBy, addDoc, updateDoc, doc, Timestamp, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, logActivity } from '../firebase';
-import { Plus, Calendar as CalendarIcon, Clock, MapPin, Edit2, X, Tag, CalendarPlus, Trash2 } from 'lucide-react';
+import { Plus, Calendar as CalendarIcon, Clock, MapPin, Edit2, Tag, CalendarPlus } from 'lucide-react';
 import { format, addHours } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 import { motion, AnimatePresence } from 'motion/react';
+import { Modal } from '../components/ui/Modal';
+import { Badge } from '../components/ui/Badge';
+import { useToast } from '../components/ui/Toast';
+import { useConfirm } from '../components/ui/ConfirmDialog';
+import { visitStatus } from '../lib/status';
 
 export const Visits: React.FC = () => {
   const [visits, setVisits] = useState<any[]>([]);
@@ -23,6 +28,8 @@ export const Visits: React.FC = () => {
     notes: ''
   });
   const [loading, setLoading] = useState(false);
+  const toast = useToast();
+  const confirm = useConfirm();
 
   useEffect(() => {
     // Fetch clients for reference
@@ -57,24 +64,6 @@ export const Visits: React.FC = () => {
       unsubVisits();
     };
   }, []);
-
-  const getStatusColor = (status: string) => {
-    switch(status) {
-      case 'scheduled': return 'bg-blue-100 text-blue-800';
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'cancelled': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
-    switch(status) {
-      case 'scheduled': return 'Programada';
-      case 'completed': return 'Completada';
-      case 'cancelled': return 'Cancelada';
-      default: return status;
-    }
-  };
 
   const openModal = (visit?: any) => {
     if (visit) {
@@ -121,8 +110,10 @@ export const Visits: React.FC = () => {
         await logActivity('Nueva Visita', { clientId: dataToSave.clientId, id: docRef.id });
       }
       setIsModalOpen(false);
+      toast.success(editingVisit ? 'Visita actualizada' : 'Visita agendada');
     } catch (err) {
-      handleFirestoreError(err, editingVisit ? OperationType.UPDATE : OperationType.CREATE, 'visits');
+      toast.error('No se pudo guardar la visita. Reintentá.');
+      try { handleFirestoreError(err, editingVisit ? OperationType.UPDATE : OperationType.CREATE, 'visits'); } catch { /* logged */ }
     } finally {
       setLoading(false);
     }
@@ -130,21 +121,27 @@ export const Visits: React.FC = () => {
 
   const handleDeleteVisit = async () => {
     if (!editingVisit) return;
-    
+
     const clientName = clients[editingVisit.clientId]?.name || 'Cliente Desconocido';
-    const confirmDelete = window.confirm(`¿Estás seguro que deseas eliminar la visita del cliente "${clientName}"? Esta acción no se puede deshacer.`);
-    
-    if (confirmDelete) {
-      setLoading(true);
-      try {
-        await deleteDoc(doc(db, 'visits', editingVisit.id));
-        await logActivity('Eliminación de Visita', { clientId: editingVisit.clientId, id: editingVisit.id });
-        setIsModalOpen(false);
-      } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, 'visits');
-      } finally {
-        setLoading(false);
-      }
+    const ok = await confirm({
+      title: 'Eliminar visita',
+      message: `Se eliminará la visita del cliente "${clientName}". Esta acción no se puede deshacer.`,
+      confirmLabel: 'Eliminar',
+      danger: true,
+    });
+    if (!ok) return;
+
+    setLoading(true);
+    try {
+      await deleteDoc(doc(db, 'visits', editingVisit.id));
+      await logActivity('Eliminación de Visita', { clientId: editingVisit.clientId, id: editingVisit.id });
+      setIsModalOpen(false);
+      toast.success('Visita eliminada');
+    } catch (err) {
+      toast.error('No se pudo eliminar la visita.');
+      try { handleFirestoreError(err, OperationType.DELETE, 'visits'); } catch { /* logged */ }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -229,9 +226,7 @@ export const Visits: React.FC = () => {
                       <p className="text-lg font-bold text-brand-950 truncate">
                         {client ? client.name : 'Cliente Desconocido'}
                       </p>
-                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${getStatusColor(visit.status)}`}>
-                        {getStatusLabel(visit.status)}
-                      </span>
+                      <Badge {...visitStatus(visit.status)} />
                     </div>
                     <div className="flex flex-wrap gap-4 text-sm text-brand-500 font-medium">
                       <span className="flex items-center gap-1.5">
@@ -291,48 +286,14 @@ export const Visits: React.FC = () => {
       </div>
 
       {/* Modal */}
-      <AnimatePresence>
-        {isModalOpen && (
-          <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-            <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-brand-950/40 backdrop-blur-sm transition-opacity" 
-                aria-hidden="true" 
-                onClick={() => setIsModalOpen(false)}
-              ></motion.div>
-              <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                onClick={(e) => e.stopPropagation()}
-                className="relative z-10 inline-block align-bottom bg-white rounded-3xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full"
-              >
-                <div className="bg-white px-8 pt-8 pb-8">
-                    <div className="flex justify-between items-center mb-8">
-                      <h3 className="text-2xl font-display font-bold text-brand-950" id="modal-title">
-                        {editingVisit ? 'Editar Visita' : 'Agendar Visita'}
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        {editingVisit && (
-                          <button 
-                            type="button"
-                            onClick={handleDeleteVisit}
-                            disabled={loading}
-                            className="text-rose-400 hover:text-rose-600 p-2 rounded-full hover:bg-rose-50 transition-all"
-                            title="Eliminar Visita"
-                          >
-                            <Trash2 className="h-5 w-5" />
-                          </button>
-                        )}
-                        <button onClick={() => setIsModalOpen(false)} className="text-brand-300 hover:text-brand-500 p-2 rounded-full hover:bg-brand-50 transition-all">
-                          <X className="h-6 w-6" />
-                        </button>
-                      </div>
-                    </div>
+      <Modal
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingVisit ? 'Editar Visita' : 'Agendar Visita'}
+        onDelete={editingVisit ? handleDeleteVisit : undefined}
+        deleteDisabled={loading}
+        deleteTitle="Eliminar Visita"
+      >
                   <form onSubmit={handleSubmit} className="space-y-6">
                     <div>
                       <label className="block text-xs font-black text-brand-500 uppercase tracking-widest mb-2">Cliente *</label>
@@ -374,12 +335,7 @@ export const Visits: React.FC = () => {
                       </button>
                     </div>
                   </form>
-                </div>
-              </motion.div>
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
+      </Modal>
     </motion.div>
   );
 };
